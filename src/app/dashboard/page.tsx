@@ -175,7 +175,7 @@ export default function DashboardPage() {
       setGenStatus('❌ AI search failed — try again');
     }
     setGenLoading(false);
-    setTimeout(() => { setGenStatus(''); setSearchLog([]); setShowGenerator(false); }, 4000);
+    setTimeout(() => { setGenStatus(''); }, 5000);
   }
 
   async function foreverMemoriesSearch() {
