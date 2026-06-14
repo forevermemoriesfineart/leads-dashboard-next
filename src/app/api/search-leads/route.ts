@@ -273,3 +273,4 @@ function extractLeadsFromResults(results: any[], industry: string, location: str
       created: new Date().toISOString(), search_query: `${industry} ${location}`,
     };
   });
+}
