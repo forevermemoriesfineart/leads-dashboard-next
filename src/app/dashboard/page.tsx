@@ -151,19 +151,6 @@ export default function DashboardPage() {
     await loadData();
   }
 
-  async function quickGenerate() {
-    setGenLoading(true); setGenStatus('🎲 Generating...');
-    const opts: any = { verify: true };
-    if (genIndustry) opts.industry = genIndustry;
-    if (genLocation) opts.location = genLocation;
-    if (genRole) opts.role = genRole;
-    
-    const newLeads = Array.from({ length: genCount }, () => generateLead(opts));
-    await saveLeads(newLeads);
-    setGenStatus(`✅ ${genCount} leads generated`); setGenLoading(false);
-    setTimeout(() => { setGenStatus(''); setShowGenerator(false); }, 1500);
-  }
-
   async function aiSearch() {
     setGenLoading(true); setGenStatus(''); setSearchLog(['🤖 Starting AI-powered search...']);
     try {
@@ -180,9 +167,8 @@ export default function DashboardPage() {
       if (data.leads?.length) await saveLeads(data.leads);
       setGenStatus(`✅ AI found ${data.leads?.length || 0} leads (${data.search_sources || 0} sources)`);
     } catch {
-      setSearchLog(prev => [...prev, '❌ Search failed']);
-      setGenStatus('❌ AI search failed, trying local...');
-      await quickGenerate();
+      setSearchLog(prev => [...prev, '❌ AI search failed']);
+      setGenStatus('❌ AI search failed — try again');
     }
     setGenLoading(false);
     setTimeout(() => { setGenStatus(''); setSearchLog([]); setShowGenerator(false); }, 4000);
@@ -312,7 +298,6 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
-              <button onClick={quickGenerate} disabled={genLoading} className="px-4 py-2 bg-[#f97316] hover:bg-[#ea5c0a] text-white font-semibold rounded-md text-sm transition-all disabled:opacity-50">🎲 Quick Generate</button>
               <button onClick={aiSearch} disabled={genLoading}
                 className="px-4 py-2 font-semibold rounded-md text-sm text-white transition-all disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg, #8b5cf6, #f97316)' }}
