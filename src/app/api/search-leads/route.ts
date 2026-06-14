@@ -194,57 +194,48 @@ export async function GET(req: Request) {
   
   const log: string[] = [];
   
-  // Fast: only 2 search queries + skip website scraping if AI succeeds
-  log.push(`🔍 Searching for "${industry}" in "${location}"`);
-  const queries = [
-    `${industry} ${location} phone number address contact`,
-    `top ${industry} companies in ${location}`,
-  ];
-  if (role) queries.push(`${role} ${industry} ${location}`);
+  // Run search and AI in PARALLEL (fastest wins)
+  log.push(`🔍 Searching & AI generating in parallel...`);
   
-  let allResults: any[] = [];
-  for (const q of queries.slice(0, 3)) {
-    const results = await startpageSearch(q);
-    if (results.length) {
-      log.push(`   ↳ "${q.slice(0, 50)}": ${results.length} results`);
-      allResults.push(...results);
+  // Fire both at same time
+  const searchPromise = (async () => {
+    let allResults: any[] = [];
+    const queries = [`${industry} ${location} phone number address contact`, `top ${industry} companies in ${location}`];
+    for (const q of queries.slice(0, 2)) {
+      const results = await startpageSearch(q);
+      if (results.length) { log.push(`   ↳ "${q.slice(0, 40)}": ${results.length}`); allResults.push(...results); }
     }
+    const seen = new Set<string>();
+    return allResults.filter(r => { const k = r.url; if (seen.has(k)) return false; seen.add(k); return true; });
+  })();
+  
+  const aiPromise = (async () => {
+    try {
+      const p = aiFallback(industry, location, count);
+      const t = new Promise<any[]>((r) => setTimeout(() => r([]), 4000));
+      return await Promise.race([p, t]);
+    } catch { return []; }
+  })();
+  
+  // Wait for either to complete (max 7s total)
+  const [searchResults, aiLeads] = await Promise.all([
+    Promise.race([searchPromise, Promise.resolve([] as any[])]),
+    Promise.race([aiPromise, Promise.resolve([] as any[])]),
+    new Promise(r => setTimeout(r, 6000))
+  ]);
+  
+  const unique: any[] = searchResults || [];
+  log.push(`📊 ${unique.length} search + ${aiLeads?.length || 0} AI leads`);
+  
+  // Build final leads
+  let leads: any[] = aiLeads || [];
+  if (!leads.length && unique.length > 0) {
+    log.push(`⚠️ AI timed out, extracting from search...`);
+    leads = extractLeadsFromResults(unique, industry, location, count);
   }
-  
-  // Deduplicate
-  const seen = new Set<string>();
-  const unique = allResults.filter(r => {
-    const key = r.url;
-    if (seen.has(key)) return false;
-    seen.add(key); return true;
-  });
-  
-  log.push(`📊 ${unique.length} search results from web`);
-  
-  // FAST PATH: If no search results AND no time for AI, return search-based leads immediately
-  // AI enrichment happens below if there's time
-  let leads: any[] = [];
-  
-  // Try quick AI call (5s max)
-  try {
-    log.push(`🧠 AI generating leads...`);
-    const aiPromise = aiFallback(industry, location, count);
-    const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 5000));
-    leads = await Promise.race([aiPromise, timeoutPromise]);
-  } catch {}
-  
-  if (leads.length) {
-    log.push(`✅ AI generated ${leads.length} leads`);
-  } else {
-    // AI timed out - generate from search results or minimal fallback
-    if (unique.length > 0) {
-      log.push(`⚠️ AI timed out, extracting from search data...`);
-      leads = extractLeadsFromResults(unique, industry, location, count);
-    } else {
-      // Last resort: generate minimal leads locally
-      log.push(`⚠️ AI unavailable, generating basic leads...`);
-      leads = generateBasicLeads(industry, location, count);
-    }
+  if (!leads.length) {
+    log.push(`📋 Using local database...`);
+    leads = generateBasicLeads(industry, location, count);
   }
 
   if (leads.length > 0) {
