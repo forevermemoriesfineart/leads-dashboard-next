@@ -323,6 +323,15 @@ export default function DashboardPage() {
               >🎨 Forever Memories</button>
               {genStatus && <span className="text-sm text-emerald-400 font-medium">{genStatus}</span>}
             </div>
+            {/* Search Log Console */}
+            {searchLog.length > 0 && (
+              <div className="mt-3 bg-[#0f1923] border border-[#1e2d4a] rounded-md p-3 font-mono text-xs max-h-48 overflow-y-auto">
+                <div className="text-[#8892a4] mb-1 text-[10px] uppercase tracking-wider">Search Console</div>
+                {searchLog.map((line, i) => (
+                  <div key={i} className="text-[#e0e0e0] py-0.5 leading-relaxed">{line}</div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
