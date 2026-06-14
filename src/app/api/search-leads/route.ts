@@ -219,42 +219,46 @@ export async function GET(req: Request) {
     seen.add(key); return true;
   });
   
-  log.push(`📊 ${unique.length} unique results`);
+  log.push(`📊 ${unique.length} search results from web`);
   
-  // Try AI extraction
+  // Strategy: AI knowledge first (reliable), web search as enrichment
   let leads: any[] = [];
+  
+  // 1. PRIMARY: AI generates leads from knowledge (always works, knows real companies)
+  log.push(`🧠 AI generating ${count} leads from knowledge...`);
   try {
-    if (unique.length > 0) {
-      log.push(`🧠 AI extracting leads from search results...`);
-      const aiPromise = aiExtractLeads(unique, industry, location, count, role);
-      const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 7000));
-      leads = await Promise.race([aiPromise, timeoutPromise]);
-    }
-    
-    if (!leads.length) {
-      if (unique.length > 0) log.push(`⚠️ AI timed out, extracting from search results...`);
-      else log.push(`⚠️ No search results (Vercel IP blocked by Startpage), using AI fallback...`);
-      
-      // AI fallback: generate leads directly from AI knowledge
-      log.push(`🧠 AI generating leads from knowledge...`);
-      const aiPromise = aiFallback(industry, location, count);
-      const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 7000));
-      leads = await Promise.race([aiPromise, timeoutPromise]);
-      
-      if (leads.length) {
-        log.push(`✅ AI generated ${leads.length} leads from knowledge`);
-      } else {
-        log.push(`⚠️ AI unavailable, extracting from raw search data...`);
-        leads = extractLeadsFromResults(unique, industry, location, count);
+    const aiPromise = aiFallback(industry, location, count);
+    const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 8000));
+    leads = await Promise.race([aiPromise, timeoutPromise]);
+  } catch {}
+  
+  if (leads.length) {
+    log.push(`✅ AI generated ${leads.length} leads`);
+  }
+
+  // 2. BONUS: If search found results, try to enrich with real URLs/phones
+  if (unique.length > 0 && leads.length) {
+    log.push(`🔗 Enriching leads with real URLs from search...`);
+    leads = leads.map((l, i) => {
+      if (i < unique.length && !l.source?.startsWith('http')) {
+        l.source = unique[i].url;
+        if (unique[i].phone && !l.phone) l.phone = unique[i].phone;
+        if (unique[i].revenue && !l.revenue) l.revenue = unique[i].revenue;
       }
-    } else {
-      log.push(`✅ AI generated ${leads.length} leads`);
-    }
-  } catch {
-    log.push(`⚠️ AI failed, extracting from search results...`);
+      return l;
+    });
+  }
+
+  // 3. LAST RESORT: Extract from search results if AI completely failed
+  if (!leads.length && unique.length > 0) {
+    log.push(`⚠️ AI unavailable, extracting from search data...`);
     leads = extractLeadsFromResults(unique, industry, location, count);
   }
-  
+
+  if (!leads.length) {
+    log.push(`❌ No leads generated — try again`);
+  }
+
   if (leads.length > 0) {
     await upsertLeads(leads, session.user.id);
   }
