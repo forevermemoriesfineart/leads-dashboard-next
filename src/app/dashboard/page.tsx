@@ -145,9 +145,13 @@ export default function DashboardPage() {
   }, [leads, search, filterStatus, filterIndustry, filterScore, sortBy]);
 
   async function saveLeads(newLeads: Lead[]) {
-    const all = [...newLeads, ...leads];
+    // Deduplicate: skip leads whose email already exists
+    const existingEmails = new Set(leads.map(l => l.email.toLowerCase()));
+    const unique = newLeads.filter(l => !existingEmails.has(l.email.toLowerCase()));
+    if (!unique.length) return;
+    const all = [...unique, ...leads];
     setLeads(all);
-    try { await fetch('/api/leads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newLeads) }); } catch {}
+    try { await fetch('/api/leads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(unique) }); } catch {}
     await loadData();
   }
 
@@ -312,8 +316,11 @@ export default function DashboardPage() {
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold text-[#8892a4] uppercase">Count: {genCount}</label>
-                <input type="range" min="1" max="15" value={genCount} onChange={e => setGenCount(parseInt(e.target.value))} className="mt-2 accent-[#f97316]" />
+                <label className="text-[10px] font-semibold text-[#8892a4] uppercase">Count</label>
+                <div className="flex items-center gap-2">
+                  <input type="range" min="1" max="50" value={Math.min(genCount, 50)} onChange={e => setGenCount(parseInt(e.target.value))} className="flex-1 accent-[#f97316]" />
+                  <input type="number" min="1" max="100" value={genCount} onChange={e => setGenCount(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))} className="w-16 bg-[#0f3460] border border-[#1e2d4a] rounded-md px-2 py-1.5 text-sm text-white text-center outline-none focus:border-[#f97316]" />
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
