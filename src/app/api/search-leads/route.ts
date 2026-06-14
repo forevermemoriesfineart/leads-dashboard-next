@@ -180,7 +180,10 @@ export async function GET(req: Request) {
   const count = Math.min(parseInt(searchParams.get('count') || '5'), 15);
   const role = searchParams.get('role') || '';
   
+  const log: string[] = [];
+  
   // Search Startpage
+  log.push(`🔍 Starting multi-source search for "${industry}" in "${location}"`);
   const queries = [
     `top ${industry} companies in ${location}`,
     `best ${industry} businesses ${location}`,
@@ -190,7 +193,9 @@ export async function GET(req: Request) {
   
   let allResults: any[] = [];
   for (const q of queries.slice(0, 4)) {
+    log.push(`🌐 Searching: "${q.slice(0, 60)}..."`);
     const results = await startpageSearch(q);
+    log.push(`   ↳ Found ${results.length} results via Startpage`);
     allResults.push(...results);
     await new Promise(r => setTimeout(r, 500));
   }
@@ -203,7 +208,13 @@ export async function GET(req: Request) {
     seen.add(key); return true;
   });
   
+  const phoneResults = unique.filter(r => r.phone).length;
+  const revenueResults = unique.filter(r => r.revenue).length;
+  log.push(`📊 ${unique.length} unique results (📞${phoneResults} phones, 💰${revenueResults} revenue)`);
+  
+  log.push(`🧠 AI analyzing ${Math.min(unique.length, 15)} results with DeepSeek...`);
   const leads = await aiExtractLeads(unique, industry, location, count, role);
+  log.push(`✅ Generated ${leads.length} leads`);
   
   if (leads.length > 0) {
     await upsertLeads(leads, session.user.id);
@@ -213,8 +224,9 @@ export async function GET(req: Request) {
     leads: leads.slice(0, count),
     search_sources: unique.length,
     social_sources: 0,
-    phone_sources: unique.filter(r => r.phone).length,
-    revenue_sources: unique.filter(r => r.revenue).length,
+    phone_sources: phoneResults,
+    revenue_sources: revenueResults,
     engines_used: ['Startpage (Google)'],
+    log,
   });
 }

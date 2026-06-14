@@ -99,6 +99,8 @@ export default function DashboardPage() {
   const [genRole, setGenRole] = useState('');
   const [genCount, setGenCount] = useState(8);
 
+  const [searchLog, setSearchLog] = useState<string[]>([]);
+
   useEffect(() => {
     if (authStatus === 'unauthenticated') router.push('/login');
     if (authStatus === 'authenticated') loadData();
@@ -163,7 +165,7 @@ export default function DashboardPage() {
   }
 
   async function aiSearch() {
-    setGenLoading(true); setGenStatus('🤖 AI searching the web...');
+    setGenLoading(true); setGenStatus(''); setSearchLog(['🤖 Starting AI-powered search...']);
     try {
       const params = new URLSearchParams();
       if (genIndustry) params.set('industry', genIndustry);
@@ -174,14 +176,16 @@ export default function DashboardPage() {
       const resp = await fetch('/api/search-leads?' + params);
       if (!resp.ok) throw new Error('API error');
       const data = await resp.json();
+      if (data.log) setSearchLog(data.log);
       if (data.leads?.length) await saveLeads(data.leads);
       setGenStatus(`✅ AI found ${data.leads?.length || 0} leads (${data.search_sources || 0} sources)`);
     } catch {
+      setSearchLog(prev => [...prev, '❌ Search failed']);
       setGenStatus('❌ AI search failed, trying local...');
       await quickGenerate();
     }
     setGenLoading(false);
-    setTimeout(() => { setGenStatus(''); setShowGenerator(false); }, 2500);
+    setTimeout(() => { setGenStatus(''); setSearchLog([]); setShowGenerator(false); }, 4000);
   }
 
   async function foreverMemoriesSearch() {
