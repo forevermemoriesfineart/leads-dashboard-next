@@ -194,23 +194,31 @@ export async function GET(req: Request) {
   
   const log: string[] = [];
   
-  // Search Startpage
+  // Search Startpage + Google Maps queries
   log.push(`🔍 Starting multi-source search for "${industry}" in "${location}"`);
   const queries = [
     `top ${industry} companies in ${location}`,
     `best ${industry} businesses ${location}`,
-    `${industry} services ${location} contact`,
+    `${industry} ${location} phone number address contact`,
+    `${industry} near ${location} phone website reviews`,
   ];
   if (role) queries.push(`${role} ${industry} ${location}`);
   
   let allResults: any[] = [];
-  for (const q of queries.slice(0, 4)) {
+  for (const q of queries.slice(0, 5)) {
     log.push(`🌐 Searching: "${q.slice(0, 60)}..."`);
     const results = await startpageSearch(q);
     log.push(`   ↳ Found ${results.length} results via Startpage`);
     allResults.push(...results);
     await new Promise(r => setTimeout(r, 500));
   }
+  
+  // Google Maps-specific search for phone numbers
+  const mapsQuery = `site:yelp.com OR site:yellowpages.com OR site:trustpilot.com ${industry} ${location}`;
+  log.push(`📍 Searching business directories: "${mapsQuery.slice(0, 60)}..."`);
+  const mapsResults = await startpageSearch(mapsQuery);
+  log.push(`   ↳ Found ${mapsResults.length} directory listings`);
+  allResults.push(...mapsResults);
   
   // Deduplicate
   const seen = new Set<string>();
