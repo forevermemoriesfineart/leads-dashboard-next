@@ -41,11 +41,23 @@ function extractRevenue(text: string): string {
     if (m) {
       const amt = m[1].replace(/,/g, '');
       const unit = (m[2] || 'M').toLowerCase();
-      if (unit.startsWith('b')) return `$${amt}B`;
-      return `$${amt}M`;
+      if (unit.startsWith('b')) return `${amt}B`;
+      return `${amt}M`;
     }
   }
   return '';
+}
+
+async function scrapePageData(url: string): Promise<{ phone: string; revenue: string }> {
+  try {
+    const resp = await fetch(url, { headers: HEADERS });
+    const html = await resp.text();
+    const fullText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 50000);
+    return {
+      phone: extractPhone(fullText),
+      revenue: extractRevenue(fullText),
+    };
+  } catch { return { phone: '', revenue: '' }; }
 }
 
 async function fetchHTML(url: string, body?: string): Promise<string> {
@@ -217,15 +229,32 @@ export async function GET(req: Request) {
   log.push(`✅ Generated ${leads.length} leads`);
   
   if (leads.length > 0) {
+    // Scrape top lead source pages for phone & revenue
+    log.push(`🔎 Scraping company websites for phone & revenue...`);
+    let enrichedCount = 0;
+    for (const lead of leads.slice(0, 5)) {
+      if (lead.source && lead.source.startsWith('http') && (!lead.phone || !lead.revenue)) {
+        try {
+          const pageData = await scrapePageData(lead.source);
+          if (pageData.phone && !lead.phone) { lead.phone = pageData.phone; enrichedCount++; }
+          if (pageData.revenue && !lead.revenue) { lead.revenue = pageData.revenue; enrichedCount++; }
+        } catch {}
+      }
+    }
+    if (enrichedCount > 0) log.push(`   ↳ Enriched ${enrichedCount} leads with phone/revenue from websites`);
+    
     await upsertLeads(leads, session.user.id);
   }
   
+  const finalPhoneCount = leads.filter(l => l.phone).length;
+  const finalRevenueCount = leads.filter(l => l.revenue).length;
+
   return Response.json({
     leads: leads.slice(0, count),
     search_sources: unique.length,
     social_sources: 0,
-    phone_sources: phoneResults,
-    revenue_sources: revenueResults,
+    phone_sources: finalPhoneCount,
+    revenue_sources: finalRevenueCount,
     engines_used: ['Startpage (Google)'],
     log,
   });
