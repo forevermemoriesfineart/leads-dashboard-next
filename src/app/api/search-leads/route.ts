@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth';
 import { upsertLeads, initDB } from '@/lib/db';
 
 const AI_BASE = process.env.AI_API_URL || 'https://openclawhardware.dev/api/ai';
-const AI_KEY = process.env.AI_API_KEY || '';
+const AI_KEY = process.env.AI_API_KEY || 'claw_8…92c0';
 const AI_MODEL = 'deepseek-v4-flash';
 
 const HEADERS = {
