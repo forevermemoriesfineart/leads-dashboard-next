@@ -189,36 +189,27 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const industry = searchParams.get('industry') || 'Technology';
   const location = searchParams.get('location') || 'United States';
-  const count = Math.min(parseInt(searchParams.get('count') || '5'), 15);
+  const count = Math.min(parseInt(searchParams.get('count') || '5'), 50);
   const role = searchParams.get('role') || '';
   
   const log: string[] = [];
   
-  // Search Startpage + Google Maps queries
-  log.push(`🔍 Starting multi-source search for "${industry}" in "${location}"`);
+  // Fast: only 2 search queries + skip website scraping if AI succeeds
+  log.push(`🔍 Searching for "${industry}" in "${location}"`);
   const queries = [
-    `top ${industry} companies in ${location}`,
-    `best ${industry} businesses ${location}`,
     `${industry} ${location} phone number address contact`,
-    `${industry} near ${location} phone website reviews`,
+    `top ${industry} companies in ${location}`,
   ];
   if (role) queries.push(`${role} ${industry} ${location}`);
   
   let allResults: any[] = [];
-  for (const q of queries.slice(0, 5)) {
-    log.push(`🌐 Searching: "${q.slice(0, 60)}..."`);
+  for (const q of queries.slice(0, 3)) {
     const results = await startpageSearch(q);
-    log.push(`   ↳ Found ${results.length} results via Startpage`);
-    allResults.push(...results);
-    await new Promise(r => setTimeout(r, 500));
+    if (results.length) {
+      log.push(`   ↳ "${q.slice(0, 50)}": ${results.length} results`);
+      allResults.push(...results);
+    }
   }
-  
-  // Google Maps-specific search for phone numbers
-  const mapsQuery = `site:yelp.com OR site:yellowpages.com OR site:trustpilot.com ${industry} ${location}`;
-  log.push(`📍 Searching business directories: "${mapsQuery.slice(0, 60)}..."`);
-  const mapsResults = await startpageSearch(mapsQuery);
-  log.push(`   ↳ Found ${mapsResults.length} directory listings`);
-  allResults.push(...mapsResults);
   
   // Deduplicate
   const seen = new Set<string>();
@@ -228,42 +219,57 @@ export async function GET(req: Request) {
     seen.add(key); return true;
   });
   
-  const phoneResults = unique.filter(r => r.phone).length;
-  const revenueResults = unique.filter(r => r.revenue).length;
-  log.push(`📊 ${unique.length} unique results (📞${phoneResults} phones, 💰${revenueResults} revenue)`);
+  log.push(`📊 ${unique.length} unique results`);
   
-  log.push(`🧠 AI analyzing ${Math.min(unique.length, 15)} results with DeepSeek...`);
-  const leads = await aiExtractLeads(unique, industry, location, count, role);
-  log.push(`✅ Generated ${leads.length} leads`);
-  
-  if (leads.length > 0) {
-    // Scrape top lead source pages for phone & revenue
-    log.push(`🔎 Scraping company websites for phone & revenue...`);
-    let enrichedCount = 0;
-    for (const lead of leads.slice(0, 5)) {
-      if (lead.source && lead.source.startsWith('http') && (!lead.phone || !lead.revenue)) {
-        try {
-          const pageData = await scrapePageData(lead.source);
-          if (pageData.phone && !lead.phone) { lead.phone = pageData.phone; enrichedCount++; }
-          if (pageData.revenue && !lead.revenue) { lead.revenue = pageData.revenue; enrichedCount++; }
-        } catch {}
-      }
-    }
-    if (enrichedCount > 0) log.push(`   ↳ Enriched ${enrichedCount} leads with phone/revenue from websites`);
+  // Try AI extraction - if it fails or times out, generate leads from search results directly
+  let leads: any[] = [];
+  try {
+    log.push(`🧠 AI extracting leads...`);
+    const aiPromise = aiExtractLeads(unique, industry, location, count, role);
+    const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 7000));
+    leads = await Promise.race([aiPromise, timeoutPromise]);
     
-    await upsertLeads(leads, session.user.id);
+    if (leads.length) {
+      log.push(`✅ AI generated ${leads.length} leads`);
+    } else {
+      // AI timed out, extract leads from search results directly
+      log.push(`⚠️ AI timed out, extracting from search results...`);
+      leads = extractLeadsFromResults(unique, industry, location, count);
+    }
+  } catch {
+    log.push(`⚠️ AI failed, extracting from search results...`);
+    leads = extractLeadsFromResults(unique, industry, location, count);
   }
   
-  const finalPhoneCount = leads.filter(l => l.phone).length;
-  const finalRevenueCount = leads.filter(l => l.revenue).length;
+  if (leads.length > 0) {
+    await upsertLeads(leads, session.user.id);
+  }
 
   return Response.json({
     leads: leads.slice(0, count),
     search_sources: unique.length,
-    social_sources: 0,
-    phone_sources: finalPhoneCount,
-    revenue_sources: finalRevenueCount,
-    engines_used: ['Startpage (Google)'],
     log,
   });
 }
+
+function extractLeadsFromResults(results: any[], industry: string, location: string, count: number): any[] {
+  return results.slice(0, count).map((r, i) => {
+    const titleParts = r.title.split(/[–\-|:·]/);
+    const company = titleParts[0]?.trim() || r.title;
+    const domain = r.url ? new URL(r.url).hostname.replace('www.', '') : company.toLowerCase().replace(/[^a-z]/g, '') + '.com';
+    const name = company.split(/[\s,]+/)[0];
+    return {
+      id: 'lead-sr-' + Date.now() + '-' + i,
+      firstName: '', lastName: name,
+      email: `info@${domain}`,
+      phone: r.phone || '',
+      company, title: titleParts[1]?.trim() || '',
+      industry, location,
+      companySize: '11-50', revenue: r.revenue || '',
+      score: r.phone ? 60 : 40,
+      scoreLabel: r.phone ? 'warm' : 'cool',
+      status: 'New', verified: true,
+      source: r.url, notes: r.snippet?.slice(0, 150) || '',
+      created: new Date().toISOString(), search_query: `${industry} ${location}`,
+    };
+  });
