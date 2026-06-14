@@ -221,20 +221,34 @@ export async function GET(req: Request) {
   
   log.push(`📊 ${unique.length} unique results`);
   
-  // Try AI extraction - if it fails or times out, generate leads from search results directly
+  // Try AI extraction
   let leads: any[] = [];
   try {
-    log.push(`🧠 AI extracting leads...`);
-    const aiPromise = aiExtractLeads(unique, industry, location, count, role);
-    const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 7000));
-    leads = await Promise.race([aiPromise, timeoutPromise]);
+    if (unique.length > 0) {
+      log.push(`🧠 AI extracting leads from search results...`);
+      const aiPromise = aiExtractLeads(unique, industry, location, count, role);
+      const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 7000));
+      leads = await Promise.race([aiPromise, timeoutPromise]);
+    }
     
-    if (leads.length) {
-      log.push(`✅ AI generated ${leads.length} leads`);
+    if (!leads.length) {
+      if (unique.length > 0) log.push(`⚠️ AI timed out, extracting from search results...`);
+      else log.push(`⚠️ No search results (Vercel IP blocked by Startpage), using AI fallback...`);
+      
+      // AI fallback: generate leads directly from AI knowledge
+      log.push(`🧠 AI generating leads from knowledge...`);
+      const aiPromise = aiFallback(industry, location, count);
+      const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 7000));
+      leads = await Promise.race([aiPromise, timeoutPromise]);
+      
+      if (leads.length) {
+        log.push(`✅ AI generated ${leads.length} leads from knowledge`);
+      } else {
+        log.push(`⚠️ AI unavailable, extracting from raw search data...`);
+        leads = extractLeadsFromResults(unique, industry, location, count);
+      }
     } else {
-      // AI timed out, extract leads from search results directly
-      log.push(`⚠️ AI timed out, extracting from search results...`);
-      leads = extractLeadsFromResults(unique, industry, location, count);
+      log.push(`✅ AI generated ${leads.length} leads`);
     }
   } catch {
     log.push(`⚠️ AI failed, extracting from search results...`);
