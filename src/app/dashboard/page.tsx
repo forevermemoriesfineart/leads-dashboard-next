@@ -223,6 +223,22 @@ export default function DashboardPage() {
     } catch {}
   }
 
+  function exportCSV() {
+    if (!filteredLeads.length) return;
+    const headers = ['First Name','Last Name','Email','Phone','Company','Title','Industry','Location','Company Size','Revenue','Score','Status','Source','Created','Notes'];
+    const rows = filteredLeads.map(l => [
+      l.firstName, l.lastName, l.email, l.phone || '', l.company, l.title, l.industry, l.location,
+      l.companySize || '', l.revenue || '', l.score, l.status, l.source,
+      new Date(l.created).toISOString().split('T')[0], (l.notes || '').replace(/"/g, '""')
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `leads-export-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  }
+
   if (authStatus === 'loading' || loading) {
     return <div className="min-h-screen bg-[#1a1a2e] flex items-center justify-center"><div className="text-[#8892a4]">Loading...</div></div>;
   }
@@ -237,6 +253,9 @@ export default function DashboardPage() {
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 uppercase">● Live</span>
           </div>
           <div className="flex gap-3 items-center">
+            <button onClick={exportCSV} className="inline-flex items-center gap-2 px-4 py-2 bg-transparent border border-[#1e2d4a] hover:border-[#f97316] text-[#e0e0e0] font-semibold rounded-md transition-all text-sm">
+              📥 Export CSV
+            </button>
             <button onClick={() => setShowGenerator(!showGenerator)} className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-[#ea5c0a] text-white font-semibold rounded-md transition-all text-sm">
               ⚡ Generate Leads
             </button>
@@ -356,7 +375,7 @@ export default function DashboardPage() {
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-[#0f3460]/40">
-                  {['Score','Name','Email','Company','Title','Industry','Location','Status',''].map(h => (
+                  {['Score','Name','Email','Phone','Company','Revenue','Status',''].map(h => (
                     <th key={h} className="px-3 py-3 text-left text-[10px] font-bold text-[#8892a4] uppercase tracking-wider whitespace-nowrap border-b border-[#1e2d4a]">{h}</th>
                   ))}
                 </tr>
@@ -368,17 +387,13 @@ export default function DashboardPage() {
                       <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold text-white ${l.score >= 80 ? 'bg-red-500' : l.score >= 60 ? 'bg-yellow-500' : l.score >= 40 ? 'bg-blue-500' : 'bg-[#8892a4]'}`}>{l.score}</span>
                     </td>
                     <td className="px-3 py-3 font-medium text-white">{l.firstName} {l.lastName}</td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 text-xs">
                       {l.email}
-                      {l.verified && <span className="ml-1 text-emerald-400 text-xs">✓</span>}
+                      {l.verified && <span className="ml-1 text-emerald-400">✓</span>}
                     </td>
-                    <td className="px-3 py-3">
-                      {l.company}
-                      {l.notes?.includes('FM:') && <span className="ml-1 text-xs px-1.5 py-0.5 rounded text-yellow-500 bg-yellow-500/10 border border-yellow-500/20">🎨FM</span>}
-                    </td>
-                    <td className="px-3 py-3 text-[#8892a4] text-xs">{l.title}</td>
-                    <td className="px-3 py-3">{l.industry}</td>
-                    <td className="px-3 py-3">{l.location}</td>
+                    <td className="px-3 py-3 text-xs font-mono text-emerald-400">{l.phone || '—'}</td>
+                    <td className="px-3 py-3">{l.company}</td>
+                    <td className="px-3 py-3 text-xs font-semibold text-yellow-400">{l.revenue || '—'}</td>
                     <td className="px-3 py-3">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
                         l.status === 'New' ? 'bg-blue-500/10 text-blue-400' :
